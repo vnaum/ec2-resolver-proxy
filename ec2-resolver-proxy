@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import time
+import boto3
+
+def write_cache_file(cache_file_name):
+    dir = os.path.dirname(cache_file_name)
+    try:
+        os.makedirs(dir)
+    except OSError:
+        if not os.path.isdir(dir):
+            raise("Failed to create dir %d" % dir)
+
+    ec2 = boto3.client('ec2')
+    response = ec2.describe_instances()
+
+    hosts = []
+
+    for res in response['Reservations']:
+        for inst in res['Instances']:
+            iid = inst['InstanceId']
+            try:
+                ip = inst["PublicIpAddress"]
+                name = '-'
+                if 'Tags' in inst:
+                    for t in inst['Tags']:
+                        if t['Key'] == 'Name': name = t['Value']
+                hosts.append((iid, ip, name))
+            except KeyError:
+                pass
+    with open(cache_file_name, "w") as f:
+        for h in hosts:
+            f.write("%s\t%s\t%s\n" % h)
+
+cache_file_name = os.path.expanduser('~/.cache/ec2-resolver-proxy/hosts')
+cache_ttl = 3600
+(hostname, port) = sys.argv[1:3]
+sys.stderr.write("hostname: %s\n" % hostname)
+iid_we_want = hostname.split(".")[0]
+
+if not os.path.isfile(cache_file_name) or ( time.time() - os.stat(cache_file_name).st_mtime ) > cache_ttl:
+    write_cache_file(cache_file_name)
+
+# find host ip address in cached data
+with open(cache_file_name) as f:
+    for l in f:
+        (iid,  ip, name) = l.rstrip().split("\t")
+        if iid == iid_we_want or name == iid_we_want:
+            # connect to it / exec nc
+            args = ['/usr/bin/nc', '/usr/bin/nc', ip, port]
+            sys.stderr.write("executing %s\n" % " ".join(args))
+            os.execl(*args)
+            # TODO: pass back descriptor for ProxyUseFdpass
+            # http://www.gabriel.urdhr.fr/2016/08/07/openssh-proxyusefdpass/
+
+
+sys.stderr.write("cant find %s in cached hosts file %s\n" % (iid_we_want, cache_file_name))
+sys.exit(1)
