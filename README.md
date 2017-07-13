@@ -13,10 +13,10 @@ Host *.ec2
 ```
 
 And now you can ssh into your EC2 instance with:
-
+```
   ssh i-123456.ec2
   ssh myCoolNameTag.ec2
-
+```
 All tools that use ssh as backend (ansible, rsync) should work, too.
 
 There are alternatives, of course:
